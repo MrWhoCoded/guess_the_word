@@ -53,6 +53,12 @@ async function apiLogin(username, password) {
     });
 }
 
+async function apiLogout() {
+    return apiRequest("/auth/logout", {
+        method: "POST"
+    });
+}
+
 // ---------- Game API ----------
 
 async function apiStartGame() {

@@ -143,6 +143,15 @@ def create_session(token, user_id):
     finally:
         conn.close()
 
+def delete_session(token):
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sessions WHERE token = %s;", (token,))
+        conn.commit()
+    finally:
+        conn.close()
+
 def get_user_by_token(token):
     conn = get_connection()
     try:

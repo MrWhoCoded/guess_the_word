@@ -7,6 +7,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.database import operations as db
+from app.services.rate_limiter import rate_limit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 ph = PasswordHasher()
@@ -42,7 +43,7 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
-@router.post("/register")
+@router.post("/register", dependencies=[Depends(rate_limit(max_requests=20, window_seconds=60))])
 def register(request: RegisterRequest):
     username = request.username.lower()
     if db.get_user_by_username(username):
@@ -55,7 +56,7 @@ def register(request: RegisterRequest):
         raise HTTPException(status_code=400, detail="Username already exists. Please choose another username.")
     return {"message": "User registered successfully"}
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(rate_limit(max_requests=20, window_seconds=60))])
 def login(request: LoginRequest):
     username = request.username.lower()
     user = db.get_user_by_username(username)
@@ -71,6 +72,14 @@ def login(request: LoginRequest):
     db.create_session(token, user["id"])
     return {"token": token}
 
+@router.post("/logout")
+def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    user = db.get_user_by_token(credentials.credentials)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    db.delete_session(credentials.credentials)
+    return {"message": "Logged out successfully"}
+
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     user = db.get_user_by_token(credentials.credentials)
     if not user:
@@ -81,5 +90,6 @@ def get_current_admin(user: dict = Depends(get_current_user)):
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
 
 

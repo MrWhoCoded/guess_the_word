@@ -25,9 +25,16 @@ function saveSession(token, username) {
 }
 
 /**
- * Clears the session and redirects to the login page.
+ * Clears the session server-side and client-side and redirects to login.
  */
-function logout() {
+async function logout() {
+    try {
+        if (typeof apiLogout === "function") {
+            await apiLogout();
+        }
+    } catch {
+        // Continue logout even if server request fails
+    }
     localStorage.removeItem("token");
     localStorage.removeItem("username");
     window.location.href = "login.html";

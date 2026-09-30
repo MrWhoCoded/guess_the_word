@@ -132,25 +132,29 @@ Stage 6 introduces administrative reporting endpoints and an admin frontend dash
 
 > **Note**: Using `localStorage` for token storage is simple and appropriate for this learning project. In a production application, `httpOnly` cookies would be more resistant to XSS attacks.
 
-### Password Security
+## Security
 
-```
-Plaintext password  →  Argon2 hash  →  PostgreSQL
-```
+This project implements multi-layered security controls suitable for a learning-oriented web application:
 
-The original password is **never stored**. Argon2 is a memory-hard key derivation function that is intentionally slow, making brute-force attacks impractical compared to fast hashes like SHA-256.
+- **Password Hashing**: Uses Argon2id (`argon2-cffi`) for hashing both player and seeded admin credentials. Raw passwords are never stored or logged.
+- **Session Authentication**: Tokens are generated via Python's cryptographically secure `secrets.token_hex(32)`. `POST /auth/logout` explicitly deletes the session token from PostgreSQL.
+- **Role-Based Admin Authorization**: Admin endpoints strictly enforce `get_current_admin` checking `role == "admin"`. Frontend visibility is purely UX; backend authorization is authoritative.
+- **Game Ownership & ID Enumeration Protection**: All game queries verify that `game.user_id == session.user_id`. Attempting to access another user's game returns a generic `404 Not Found`. User ID spoofing via client payloads is ignored.
+- **Rate Limiting**: Sliding-window in-memory rate limiting protects critical endpoints (`/auth/login`, `/auth/register`, `/games`, `/games/{id}/guesses`, `/admin/reports/*`) returning HTTP `429 Too Many Requests` with a `Retry-After` header.
+- **Input Validation**: Pydantic schemas enforce alphanumeric username length (>= 5 chars), password complexity rules on registration, and guess length/character limits.
+- **SQL Parameterization**: All SQL queries use `%s` parameterized tuples via `psycopg` to prevent SQL injection.
+- **Target-Word Protection**: The target word is never returned in API payloads during active gameplay; only evaluation tile color states are transmitted.
+- **Static-File Isolation**: FastAPI mounts only `/css` and `/js` asset directories and serves explicit `.html` routes. Configuration files like `secrets.env` are inaccessible over HTTP.
+- **HTTP Security Headers**: Response middleware automatically injects:
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
 
-### Game Ownership
+### Known Security Limitations (Learning Project Context)
+1. **Process-Local Rate Limiting**: The in-memory rate limiter is process-local and resets when the FastAPI process restarts. It is intended for this local learning project rather than distributed multi-worker production.
+2. **Session Storage**: Client sessions use `localStorage` for simplicity. In production, `HttpOnly`, `Secure`, `SameSite` cookies are recommended against XSS.
+3. **Session Expiration**: Sessions persist until explicit logout (`POST /auth/logout`) or manual database purge.
 
-Each game row in PostgreSQL has a `user_id` foreign key. When any `/games/{id}` endpoint is called, the server checks that `game.user_id == authenticated_user.id`. If they don't match, the server returns `404 Not Found` (intentionally hiding the existence of other users' games).
-
-### Daily Limit: 3 Games per User per Day
-
-When `POST /games` is called, the server runs:
-```sql
-SELECT COUNT(*) FROM games WHERE user_id = %s AND DATE(started_at) = CURRENT_DATE;
-```
-If the count is >= 3, the server returns `400 Bad Request` with "Daily game limit reached". The frontend simply displays this message. The count is never tracked in JavaScript.
 
 ## Running Tests
 
@@ -158,7 +162,7 @@ If the count is >= 3, the server returns `400 Bad Request` with "Daily game limi
 pytest
 ```
 
-All 65 tests cover the evaluator, game engine, database operations, API endpoints, authentication, authorization, ownership, daily limits, security audit requirements, and admin reporting.
+All 85 tests cover the evaluator, game engine, database operations, API endpoints, authentication, authorization, ownership, daily limits, security audit requirements, admin reporting, and security hardening (rate limiting, session logout, security headers, input validation, static file security).
 
 ## Project Structure
 
@@ -166,14 +170,16 @@ All 65 tests cover the evaluator, game engine, database operations, API endpoint
 guess-the-word/
 │
 ├── app/
-│   ├── main.py                  ← FastAPI app + static file serving
+│   ├── main.py                  ← FastAPI app + static file serving + security middleware
 │   ├── api/
 │   │   ├── admin.py             ← GET /admin/reports/daily, GET /admin/reports/users
-│   │   ├── auth.py              ← POST /auth/register, POST /auth/login
+│   │   ├── auth.py              ← POST /auth/register, POST /auth/login, POST /auth/logout
 │   │   └── games.py             ← POST /games, POST /games/{id}/guesses, ...
 │   ├── game/
 │   │   ├── engine.py            ← Game class (state, attempts, win/loss)
 │   │   └── evaluator.py         ← evaluate_guess() (GREEN/ORANGE/GREY)
+│   ├── services/
+│   │   └── rate_limiter.py      ← In-memory sliding-window rate limiter
 │   └── database/
 │       ├── connection.py        ← PostgreSQL connection via psycopg
 │       ├── init_db.py           ← Schema creation, initial words, admin seeding
@@ -189,20 +195,22 @@ guess-the-word/
 │   │   └── style.css            ← Dark theme, tile colors, responsive layout, report tables
 │   └── js/
 │       ├── admin.js             ← Admin dashboard fetching and table rendering
-│       ├── api.js               ← Central fetch helper (auto-attaches token)
+│       ├── api.js               ← Central fetch helper (auto-attaches token, logout)
 │       ├── auth.js              ← Token storage, validation helpers, logout
 │       ├── login.js             ← Login form handler
 │       ├── register.js          ← Registration form handler
 │       └── game.js              ← Board rendering, guess submission
 │
 ├── tests/
-│   ├── test_evaluator.py        ← 9 tests
-│   ├── test_game.py             ← 13 tests
-│   ├── test_database.py         ← 7 tests
-│   ├── test_auth.py             ← 8 tests
-│   ├── test_api.py              ← 6 tests
-│   ├── test_security_audit.py   ← 13 tests
-│   └── test_admin.py            ← 9 tests
+│   ├── conftest.py              ← Test fixtures (rate limiter reset per test)
+│   ├── test_evaluator.py        ← 9 tests (core evaluator logic)
+│   ├── test_game.py             ← 13 tests (game engine state)
+│   ├── test_database.py         ← 7 tests (PostgreSQL integration)
+│   ├── test_auth.py             ← 8 tests (user auth & sessions)
+│   ├── test_api.py              ← 6 tests (FastAPI game endpoints)
+│   ├── test_security_audit.py   ← 13 tests (admin seeding & security audit)
+│   ├── test_admin.py            ← 9 tests (admin reporting APIs & authz)
+│   └── test_security_hardening.py ← 20 tests (rate limiting, logout, headers, validation)
 │
 ├── secrets.env                  ← PostgreSQL & Admin credentials (git-ignored)
 ├── secrets.env.example

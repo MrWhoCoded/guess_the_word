@@ -3,13 +3,14 @@ from pydantic import BaseModel
 from app.database import operations as db
 from app.game.engine import Game
 from app.api.auth import get_current_user
+from app.services.rate_limiter import rate_limit
 
 router = APIRouter(prefix="/games", tags=["games"])
 
 class GuessRequest(BaseModel):
     guess: str
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit(max_requests=15, window_seconds=60))])
 def start_game(user = Depends(get_current_user)):
     games_today = db.count_user_games_today(user["id"])
     if games_today >= 3:
@@ -45,7 +46,7 @@ def get_game(game_id: int, user = Depends(get_current_user)):
         "game_over": completed_at is not None
     }
 
-@router.post("/{game_id}/guesses")
+@router.post("/{game_id}/guesses", dependencies=[Depends(rate_limit(max_requests=30, window_seconds=60))])
 def submit_guess(game_id: int, request: GuessRequest, user = Depends(get_current_user)):
     game_data = db.get_game(game_id)
     if not game_data or game_data[5] != user["id"]:
