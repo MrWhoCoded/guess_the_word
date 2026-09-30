@@ -98,14 +98,14 @@ def get_guesses(game_id):
     finally:
         conn.close()
 
-def create_user(username, password_hash):
+def create_user(username, password_hash, role="player"):
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO users (username, password_hash)
-                VALUES (%s, %s);
-            """, (username, password_hash))
+                INSERT INTO users (username, password_hash, role)
+                VALUES (%s, %s, %s);
+            """, (username, password_hash, role))
         conn.commit()
     finally:
         conn.close()
@@ -171,3 +171,59 @@ def count_user_games_today(user_id):
             return cur.fetchone()[0]
     finally:
         conn.close()
+
+def get_daily_report():
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    TO_CHAR(started_at, 'YYYY-MM-DD') AS date,
+                    COUNT(DISTINCT user_id) AS users,
+                    COUNT(CASE WHEN won IS TRUE THEN 1 END) AS correct_guesses
+                FROM games
+                WHERE started_at IS NOT NULL
+                GROUP BY DATE(started_at), TO_CHAR(started_at, 'YYYY-MM-DD')
+                ORDER BY DATE(started_at) DESC;
+            """)
+            rows = cur.fetchall()
+            return [
+                {
+                    "date": row[0],
+                    "users": row[1],
+                    "correct_guesses": row[2]
+                }
+                for row in rows
+            ]
+    finally:
+        conn.close()
+
+def get_user_report():
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    TO_CHAR(g.started_at, 'YYYY-MM-DD') AS date,
+                    u.username,
+                    COUNT(g.id) AS words_tried,
+                    COUNT(CASE WHEN g.won IS TRUE THEN 1 END) AS correct_guesses
+                FROM games g
+                JOIN users u ON g.user_id = u.id
+                WHERE g.started_at IS NOT NULL
+                GROUP BY DATE(g.started_at), TO_CHAR(g.started_at, 'YYYY-MM-DD'), u.username
+                ORDER BY DATE(g.started_at) DESC, u.username ASC;
+            """)
+            rows = cur.fetchall()
+            return [
+                {
+                    "date": row[0],
+                    "username": row[1],
+                    "words_tried": row[2],
+                    "correct_guesses": row[3]
+                }
+                for row in rows
+            ]
+    finally:
+        conn.close()
+

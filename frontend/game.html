@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Play Guess the Word">
+    <title>Play — Guess the Word</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Header with username and logout -->
+    <div class="header">
+        <h1>Guess the Word</h1>
+        <div class="user-info">
+            <span id="username-display"></span>
+            <a id="admin-link" href="admin.html" class="btn btn-secondary" style="display:none; width:auto; padding:8px 16px; font-size:0.85rem; text-decoration:none;">Admin</a>
+            <button id="logout-btn" class="btn btn-secondary" style="width:auto; padding:8px 16px; font-size:0.85rem;">Logout</button>
+        </div>
+    </div>
+
+    <div class="game-container">
+        <!-- Message area -->
+        <div id="message" class="message" style="width:100%; max-width:380px;"></div>
+
+        <!-- Game board (built dynamically by game.js) -->
+        <div id="board" class="board"></div>
+
+        <!-- Status text -->
+        <div id="game-status" class="game-status">Click "Start Game" to begin</div>
+
+        <!-- Controls -->
+        <div class="game-controls">
+            <button id="start-btn" class="btn">Start Game</button>
+
+            <div class="guess-row">
+                <input type="text" id="guess-input" maxlength="5" placeholder="GUESS" disabled>
+                <button id="submit-btn" class="btn" disabled>Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>

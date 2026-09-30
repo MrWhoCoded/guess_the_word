@@ -1,4 +1,35 @@
+import os
+from dotenv import load_dotenv
+from argon2 import PasswordHasher
 from app.database.connection import get_connection
+
+def seed_admin(cur):
+    load_dotenv("secrets.env")
+    admin_username = os.getenv("ADMIN_USERNAME")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+
+    if not admin_username or not admin_password:
+        return
+
+    admin_username = admin_username.lower().strip()
+    
+    cur.execute("SELECT id, role FROM users WHERE username = %s;", (admin_username,))
+    row = cur.fetchone()
+
+    if not row:
+        ph = PasswordHasher()
+        password_hash = ph.hash(admin_password)
+        cur.execute("""
+            INSERT INTO users (username, password_hash, role)
+            VALUES (%s, %s, %s);
+        """, (admin_username, password_hash, "admin"))
+        print(f"Admin user '{admin_username}' created successfully.")
+    else:
+        user_id, role = row
+        if role == "admin":
+            print(f"Admin user '{admin_username}' already exists.")
+        else:
+            print(f"User '{admin_username}' already exists with role '{role}'. Cannot convert to admin.")
 
 def init_db():
     conn = get_connection()
@@ -69,6 +100,9 @@ def init_db():
                     ON CONFLICT (word) DO NOTHING;
                 """, (word,))
                 
+            # Seed admin user
+            seed_admin(cur)
+                
         conn.commit()
     finally:
         conn.close()
@@ -76,3 +110,4 @@ def init_db():
 if __name__ == "__main__":
     init_db()
     print("Database initialized successfully.")
+
