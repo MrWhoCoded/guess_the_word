@@ -1,1 +1,8 @@
-pytest==8.0.0
+pytest
+psycopg
+python-dotenv
+fastapi
+uvicorn
+httpx
+pydantic
+argon2-cffi
